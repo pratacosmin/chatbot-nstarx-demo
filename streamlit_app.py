@@ -117,7 +117,7 @@ if st.session_state['authentication_status']:
             st.subheader('RAG Response')
             st.write(response["result"])
             st.subheader("RAG Query")
-            st.write(response["intermediate_steps"]["query"])
+            st.write(response["intermediate_steps"][0]["query"])
         except Exception as e:
             st.subheader('RAG Error')
             st.write(e)
