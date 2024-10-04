@@ -1,0 +1,14 @@
+cookie:
+  expiry_days: 30
+  key: nstarx-demo-cookie # Must be a string
+  name: nstarx_cookie_demo
+credentials:
+  usernames:
+    nstarx-demo2024:
+      email: NstarX-demo@gmail.com
+      failed_login_attempts: 0 # Will be managed automatically
+      first_name: NstarX
+      last_name: NstarX
+      logged_in: False # Will be managed automatically
+      password: pFzDw2hsLnmjGPvtyVdXU3ANJ5WZHCx9c@2024 # Will be hashed automatically
+

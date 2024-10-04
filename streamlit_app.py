@@ -1,56 +1,117 @@
-import streamlit as st
-from openai import OpenAI
+import os
 
+import streamlit as st
+import yaml
+from langchain_community.graphs import Neo4jGraph
+from langchain_community.chains.graph_qa.cypher import GraphCypherQAChain
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts.prompt import PromptTemplate
+from openai import OpenAI
+import streamlit as st
+import streamlit_authenticator as stauth
 # Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
+from streamlit_authenticator import LoginError
+
+OPENAI_API_KEY = st.secrets.OPENAI_API_KEY
+NEO4J_URI = "bolt://3.237.90.248"
+NEO4J_USERNAME = "neo4j"
+NEO4J_PASSWORD = st.secrets.NEO4J_PASSWORD
+NEO4J_DATABASE = "neo4j"
+
+OPENAI_ENDPOINT = "https://api.openai.com/v1/embeddings"
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+enhanced_graph = Neo4jGraph(
+    url=NEO4J_URI,
+    username=NEO4J_USERNAME,
+    password=NEO4J_PASSWORD,
+    enhanced_schema=True,
+)
+CYPHER_GENERATION_TEMPLATE = """Task:Generate Cypher statement to query a graph database.
+Instructions:
+Use only the provided relationship types and properties in the schema.
+Do not use any other relationship types or properties that are not provided.
+Schema:
+{schema}
+Note: Do not include any explanations or apologies in your responses.
+Do not respond to any questions that might ask anything else than for you to construct a Cypher statement.
+Do not include any text except the generated Cypher statement.
+Examples: Here are a few examples of generated Cypher statements for particular questions:
+# Sum of Monthly Forecast by Country:
+MATCH (e:Employee)
+WHERE e.country IS NOT NULL AND e.monthly_forecast IS NOT NULL
+RETURN e.country AS country, SUM(e.monthly_forecast) AS total_monthly_forecast
+ORDER BY total_monthly_forecast DESC
+# Sum of Monthly Forecast by Job Title:
+MATCH (e:Employee)
+WHERE e.job_title IS NOT NULL AND e.monthly_forecast IS NOT NULL
+RETURN e.job_title AS job_title, SUM(e.monthly_forecast) AS total_monthly_forecast
+ORDER BY total_monthly_forecast DESC
+#Example  Show All Relationships from 1 to 3 Levels Deep
+MATCH p=(e:Employee WHERE e.name='Leon Müller')-[r:HAS_SUBORDINATE*1..3]->() RETURN p
+The question is:
+{question}"""
+
+CYPHER_GENERATION_PROMPT = PromptTemplate(
+    input_variables=["schema", "question"], template=CYPHER_GENERATION_TEMPLATE
 )
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+chain = GraphCypherQAChain.from_llm(
+    ChatOpenAI(temperature=0),
+    graph=enhanced_graph,
+    verbose=True,
+    cypher_prompt=CYPHER_GENERATION_PROMPT,
+    allow_dangerous_requests=True
+)
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+def run_rag(question):
+    try:
+        response = chain.invoke({"query": question})
+        return response
+    except Exception as e:
+        return None
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+hide_footer_style = """
+    <style>
+    .reportview-container .main footer {visibility: hidden;}    
+    """
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+st.markdown(hide_footer_style, unsafe_allow_html=True)
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
+st.header('Nstarx Chatbot Demo')
+st.title("💬 Nstarx Chatbot")
+st.write(
+    "This is a simple chatbot that uses a Graph RAG"
+)
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+from yaml.loader import SafeLoader
+
+with open('config.yaml') as file:
+    config = yaml.load(file, Loader=SafeLoader)
+
+# Pre-hashing all plain text passwords once
+# stauth.Hasher.hash_passwords(config['credentials'])
+
+authenticator = stauth.Authenticate(
+    config['credentials'],
+    config['cookie']['name'],
+    config['cookie']['key'],
+    config['cookie']['expiry_days']
+)
+try:
+    authenticator.login()
+    question_text = st.text_area("Question")
+    if st.button('Ask Question', type="primary"):
+        response = run_rag(question_text)
+        if response is None:
+            st.write("No Response found")
+        st.subheader('RAG Response')
+        st.write(response["result"])
+
+
+except LoginError as e:
+    st.error(e)
+    st.write(
+        "Error to Login"
+    )
