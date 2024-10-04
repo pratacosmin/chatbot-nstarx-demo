@@ -33,6 +33,7 @@ Do not use any other relationship types or properties that are not provided.
 Schema:
 {schema}
 Note: Do not include any explanations or apologies in your responses.
+Do not add comments like '# Sum of Monthly Forecast by Country:' to the response.
 Do not respond to any questions that might ask anything else than for you to construct a Cypher statement.
 Do not include any text except the generated Cypher statement.
 Examples: Here are a few examples of generated Cypher statements for particular questions:
@@ -60,16 +61,13 @@ chain = GraphCypherQAChain.from_llm(
     graph=enhanced_graph,
     verbose=True,
     cypher_prompt=CYPHER_GENERATION_PROMPT,
+    return_intermediate_steps=True,
     allow_dangerous_requests=True
 )
 
 
 def run_rag(question):
-    try:
-        response = chain.invoke({"query": question})
-        return response
-    except Exception as e:
-        return None
+    return chain.invoke({"query": question.strip()})
 
 
 hide_footer_style = """
@@ -112,11 +110,17 @@ if st.session_state['authentication_status']:
 
     question_text = st.text_area("Question")
     if st.button('Ask Question', type="primary"):
-        response = run_rag(question_text)
-        if response is None:
-            st.write("No Response found")
-        st.subheader('RAG Response')
-        st.write(response["result"])
+        try:
+            response = run_rag(question_text)
+            if response is None:
+                st.write("No Response found")
+            st.subheader('RAG Response')
+            st.write(response["result"])
+            st.subheader("RAG Query")
+            st.write(response["intermediate_steps"]["query"])
+        except Exception as e:
+            st.subheader('RAG Error')
+            st.write(e)
     authenticator.logout()
 elif st.session_state['authentication_status'] is False:
     st.error('Username/password is incorrect')
