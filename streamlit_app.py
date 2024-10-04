@@ -101,6 +101,16 @@ authenticator = stauth.Authenticate(
 )
 try:
     authenticator.login()
+
+except LoginError as e:
+    st.error(e)
+    st.write(
+        "Error to Login"
+    )
+
+if st.session_state['authentication_status']:
+    authenticator.logout()
+    st.write(f'Welcome *{st.session_state["name"]}*')
     question_text = st.text_area("Question")
     if st.button('Ask Question', type="primary"):
         response = run_rag(question_text)
@@ -108,10 +118,7 @@ try:
             st.write("No Response found")
         st.subheader('RAG Response')
         st.write(response["result"])
-
-
-except LoginError as e:
-    st.error(e)
-    st.write(
-        "Error to Login"
-    )
+elif st.session_state['authentication_status'] is False:
+    st.error('Username/password is incorrect')
+elif st.session_state['authentication_status'] is None:
+    st.warning('Please enter your username and password')
